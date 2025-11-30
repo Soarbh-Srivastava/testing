@@ -464,7 +464,29 @@ const PdfEditor = () => {
         // Get original page dimensions
         const { width, height } = page.getSize();
 
-        // Draw edited text
+        // First, cover original text with white rectangles to "erase" them
+        // Then draw the edited text on top
+        for (const textItem of pageTextItems) {
+          // Calculate position in bottom-left coordinate system (pdf-lib uses this)
+          // textItem.y is top of text in top-left coordinates
+          // In bottom-left: bottom of text = height - textItem.y - textItem.height
+          const textBottom = height - textItem.y - textItem.height;
+
+          // Draw white rectangle to cover the original text
+          // Add small padding to ensure complete coverage
+          const padding = 2;
+          page.drawRectangle({
+            x: textItem.x - padding,
+            y: textBottom - padding,
+            width: textItem.width + padding * 2,
+            height: textItem.height + padding * 2,
+            color: rgb(1, 1, 1), // White
+            borderColor: rgb(1, 1, 1),
+            borderWidth: 0,
+          });
+        }
+
+        // Now draw the edited text on top of the white rectangles
         for (const textItem of pageTextItems) {
           if (textItem.text.trim()) {
             try {
@@ -476,9 +498,9 @@ const PdfEditor = () => {
               );
 
               // Draw text at original position
-              // Note: pdf-lib uses bottom-left origin, so we need to convert
-              // textItem.y is already in top-left origin from extraction
-              // We need to convert back to bottom-left for pdf-lib
+              // Note: pdf-lib uses bottom-left origin for text baseline
+              // textItem.y is top of text in top-left coordinates
+              // For text drawing, we need the baseline: height - textItem.y
               const yPos = height - textItem.y;
 
               // Use Helvetica as default font (pdf-lib built-in)
