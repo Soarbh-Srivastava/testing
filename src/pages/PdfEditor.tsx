@@ -39,12 +39,15 @@ interface TextItem {
   height: number;
   fontSize: number;
   fontName: string;
+  fontWeight?: string; // bold, normal
+  fontStyle?: string; // italic, normal
   color: { r: number; g: number; b: number };
   rotation: number;
   pageIndex: number;
   pageWidth: number; // Original page width in points
   pageHeight: number; // Original page height in points
   transform?: number[]; // Original transform matrix for accurate positioning
+  baselineY?: number; // Baseline Y position for accurate text rendering
 }
 
 interface Annotation {
@@ -182,8 +185,43 @@ const PdfEditor = () => {
           // item.height is the actual rendered height including ascenders/descenders
           const height = item.height || fontSize;
 
+          // Check if item has bbox (bounding box) for more accurate positioning
+          // bbox format: [xMin, yMin, xMax, yMax] in PDF coordinates
+          let useBbox = false;
+          let bboxY = y;
+          if (item.bbox && Array.isArray(item.bbox) && item.bbox.length >= 4) {
+            // bbox[1] is yMin (bottom), bbox[3] is yMax (top) in bottom-left coords
+            bboxY = item.bbox[1]; // Use bottom of bounding box
+            useBbox = true;
+          }
+
           // Store the transform matrix for accurate positioning
           const transformMatrix = transform;
+
+          // Extract font weight and style from fontName
+          // PDF font names often include weight/style: "Helvetica-Bold", "Times-Italic", etc.
+          let fontWeight = "normal";
+          let fontStyle = "normal";
+          const fontNameLower = (item.fontName || "Helvetica").toLowerCase();
+
+          if (fontNameLower.includes("bold") || fontNameLower.includes("-b")) {
+            fontWeight = "bold";
+          }
+          if (
+            fontNameLower.includes("italic") ||
+            fontNameLower.includes("-i") ||
+            fontNameLower.includes("oblique")
+          ) {
+            fontStyle = "italic";
+          }
+
+          // Clean font name (remove weight/style suffixes)
+          let cleanFontName = item.fontName || "Helvetica";
+          cleanFontName = cleanFontName.replace(
+            /-Bold|-Italic|-Regular|-B|-I|-Oblique/gi,
+            ""
+          );
+          cleanFontName = cleanFontName.split(",")[0].trim(); // Take first font if multiple
 
           // Get color from item (normalize to 0-255 range)
           let color = { r: 0, g: 0, b: 0 };
@@ -200,25 +238,45 @@ const PdfEditor = () => {
             }
           }
 
-          // PDF.js uses bottom-left origin, convert to top-left
-          // viewport.height is the page height in points
-          const pdfY = viewport.height - y;
+          // PDF.js uses bottom-left origin for text
+          // If we have bbox, use it for more accurate positioning
+          // Otherwise use transform Y (baseline) and adjust
+          const baselineY = useBbox ? bboxY : y;
+
+          // Calculate top position in top-left coordinates
+          // If using bbox: top = pageHeight - bbox[3] (yMax)
+          // Otherwise: estimate from baseline
+          let pdfY: number;
+          if (useBbox && item.bbox && item.bbox.length >= 4) {
+            // bbox[3] is yMax (top) in bottom-left coords
+            // Convert to top-left: pageHeight - yMax
+            pdfY = viewport.height - item.bbox[3];
+          } else {
+            // No bbox, estimate from baseline
+            // Most fonts have ~20% above baseline, 80% below
+            // So top is approximately: baseline - (fontSize * 0.2)
+            const estimatedTop = baselineY - fontSize * 0.2;
+            pdfY = viewport.height - estimatedTop;
+          }
 
           extractedItems.push({
             id: `text-${pageNum}-${index}`,
             text: item.str,
             x: x, // X is already in PDF coordinates
-            y: pdfY, // Converted to top-left origin
+            y: pdfY, // Top position in top-left origin (adjusted for text height)
             width: width,
             height: height,
             fontSize: fontSize,
-            fontName: item.fontName || "Helvetica",
+            fontName: cleanFontName,
+            fontWeight: fontWeight,
+            fontStyle: fontStyle,
             color: color,
             rotation: 0, // Could extract from transform if needed
             pageIndex: pageNum - 1,
             pageWidth: viewport.width,
             pageHeight: viewport.height,
             transform: transformMatrix, // Store transform for accurate positioning
+            baselineY: baselineY, // Store baseline for reference
           });
         }
       });
@@ -415,6 +473,7 @@ const PdfEditor = () => {
     // textItem has the original page dimensions stored
     // currentViewport has the scaled dimensions
     // Convert PDF point coordinates to screen pixel coordinates
+    // Use exact calculations without rounding to ensure perfect alignment
     const screenX = (textItem.x / textItem.pageWidth) * canvas.width;
     const screenY = (textItem.y / textItem.pageHeight) * canvas.height;
     const screenWidth = (textItem.width / textItem.pageWidth) * canvas.width;
@@ -424,8 +483,8 @@ const PdfEditor = () => {
     return {
       x: screenX,
       y: screenY,
-      width: Math.max(screenWidth, 30),
-      height: Math.max(screenHeight, 15),
+      width: Math.max(screenWidth, 20),
+      height: Math.max(screenHeight, 12),
     };
   };
 
@@ -944,12 +1003,17 @@ const PdfEditor = () => {
                                             textItem.fontSize * scale
                                           }px`,
                                           fontFamily: textItem.fontName,
+                                          fontWeight:
+                                            textItem.fontWeight || "normal",
+                                          fontStyle:
+                                            textItem.fontStyle || "normal",
                                           color: `rgb(${textItem.color.r}, ${textItem.color.g}, ${textItem.color.b})`,
                                           lineHeight: "1",
                                           overflow: "hidden",
                                           wordWrap: "break-word",
                                           padding: "0",
                                           margin: "0",
+                                          verticalAlign: "top",
                                           transform: textItem.rotation
                                             ? `rotate(${textItem.rotation}deg)`
                                             : undefined,
