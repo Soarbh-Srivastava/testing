@@ -219,6 +219,35 @@ const PdfEditor = () => {
     setTextItems(extractedItems);
   };
 
+  const coverOriginalText = (pageIndex: number) => {
+    if (!canvasRef.current || !currentViewport || editingMode !== "edit")
+      return;
+
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const pageTextItems = getTextItemsForPage(pageIndex);
+    if (pageTextItems.length === 0) return;
+
+    // Draw white rectangles to cover original text
+    pageTextItems.forEach((textItem) => {
+      const screenCoords = convertPdfToScreenCoords(textItem);
+      if (!screenCoords) return;
+
+      // Draw white rectangle to cover the original text
+      // Use a slightly larger area to ensure complete coverage
+      const padding = 3;
+      ctx.fillStyle = "#ffffff"; // White
+      ctx.fillRect(
+        screenCoords.x - padding,
+        screenCoords.y - padding,
+        screenCoords.width + padding * 2,
+        screenCoords.height + padding * 2
+      );
+    });
+  };
+
   const renderPage = async (pageNum: number) => {
     if (!pdfDoc || !canvasRef.current) return;
 
@@ -244,6 +273,11 @@ const PdfEditor = () => {
       };
 
       await page.render(renderContext).promise;
+
+      // If in edit mode, cover original text with white rectangles
+      if (pageNum === currentPage && editingMode === "edit") {
+        coverOriginalText(pageNum - 1);
+      }
 
       // Render annotations for this page
       if (pageNum === currentPage) {
@@ -348,7 +382,7 @@ const PdfEditor = () => {
     if (pdfDoc && currentPage) {
       renderPage(currentPage);
     }
-  }, [pdfDoc, currentPage, scale]);
+  }, [pdfDoc, currentPage, scale, editingMode, textItems]);
 
   useEffect(() => {
     if (pdfDoc && currentPage) {
