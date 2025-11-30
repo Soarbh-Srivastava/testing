@@ -23,11 +23,11 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
-// Configure PDF.js worker - use jsdelivr CDN (most reliable)
+// Configure PDF.js worker - use protocol-relative URL for better compatibility
+// PDF.js 5.4.394 worker location
 if (typeof window !== "undefined") {
-  // For PDF.js 5.x, use .mjs, for older versions use .js
-  // Try .mjs first, it will fallback if needed
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.js`;
+  // Use unpkg.com which is more reliable than cdnjs for this version
+  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
 }
 
 interface TextItem {
