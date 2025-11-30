@@ -1,0 +1,44 @@
+name: Notify IndexNow
+
+on:
+  push:
+    branches:
+      - main  # runs when you push to main
+  workflow_dispatch:  # allows manual run from the Actions tab
+
+jobs:
+  indexnow:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Notify IndexNow
+        run: |
+          echo "Submitting URLs to IndexNow..."
+          RESPONSE=$(curl -s -w "%{http_code}" -o response.txt -X POST "https://api.indexnow.org/indexnow" \
+          -H "Content-Type: application/json; charset=utf-8" \
+          -d '{
+            "host": "oneklick.app",
+            "key": "c926ea6a77804e27a93adb56cc99155e",
+            "urlList": [
+              "https://oneklick.app",
+              "https://oneklick.app/clipboard"
+            ]
+          }')
+
+          echo "HTTP Response Code: $RESPONSE"
+          echo "Response Body:"
+          cat response.txt
+
+          if [ "$RESPONSE" -eq 200 ]; then
+            echo "✅ IndexNow submission successful!"
+          elif [ "$RESPONSE" -eq 202 ]; then
+            echo "🕓 Received by IndexNow — waiting for domain key verification."
+          elif [ "$RESPONSE" -eq 403 ]; then
+            echo "❌ Forbidden — check your key file or domain verification."
+          elif [ "$RESPONSE" -eq 422 ]; then
+            echo "⚠️ Invalid URL or key mismatch."
+          elif [ "$RESPONSE" -eq 429 ]; then
+            echo "🚫 Too many requests — slow down submissions."
+          else
+            echo "❓ Unexpected response — please check the response body above."
+          fi
