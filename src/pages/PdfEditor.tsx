@@ -44,6 +44,7 @@ interface TextItem {
   pageIndex: number;
   pageWidth: number; // Original page width in points
   pageHeight: number; // Original page height in points
+  transform?: number[]; // Original transform matrix for accurate positioning
 }
 
 interface Annotation {
@@ -175,8 +176,14 @@ const PdfEditor = () => {
           const y = transform[5] || 0;
 
           // Get text width and height from transform or item
+          // Use item.width if available (more accurate), otherwise estimate
           const width = item.width || item.str.length * fontSize * 0.6;
+          // Use item.height if available, otherwise use fontSize
+          // item.height is the actual rendered height including ascenders/descenders
           const height = item.height || fontSize;
+
+          // Store the transform matrix for accurate positioning
+          const transformMatrix = transform;
 
           // Get color from item (normalize to 0-255 range)
           let color = { r: 0, g: 0, b: 0 };
@@ -211,6 +218,7 @@ const PdfEditor = () => {
             pageIndex: pageNum - 1,
             pageWidth: viewport.width,
             pageHeight: viewport.height,
+            transform: transformMatrix, // Store transform for accurate positioning
           });
         }
       });
@@ -230,21 +238,20 @@ const PdfEditor = () => {
     const pageTextItems = getTextItemsForPage(pageIndex);
     if (pageTextItems.length === 0) return;
 
-    // Draw white rectangles to cover original text
+    // Draw white rectangles to cover original text with exact font metrics
     pageTextItems.forEach((textItem) => {
       const screenCoords = convertPdfToScreenCoords(textItem);
       if (!screenCoords) return;
 
-      // Draw white rectangle to cover the original text
-      // Use a slightly larger area to ensure complete coverage
-      const padding = 3;
+      // Use the exact dimensions from the extracted text item
+      // These are already calculated from PDF.js which has accurate font metrics
+      const coverWidth = screenCoords.width;
+      const coverHeight = screenCoords.height;
+
+      // The coordinates are already in screen space and account for the scale
+      // Draw white rectangle to cover the original text exactly
       ctx.fillStyle = "#ffffff"; // White
-      ctx.fillRect(
-        screenCoords.x - padding,
-        screenCoords.y - padding,
-        screenCoords.width + padding * 2,
-        screenCoords.height + padding * 2
-      );
+      ctx.fillRect(screenCoords.x, screenCoords.y, coverWidth, coverHeight);
     });
   };
 
@@ -927,20 +934,22 @@ const PdfEditor = () => {
                                             e.currentTarget.textContent || ""
                                           );
                                         }}
-                                        className="absolute border border-blue-400 bg-blue-50/30 p-0.5 rounded pointer-events-auto cursor-text"
+                                        className="absolute border border-blue-400 bg-blue-50/30 p-0 rounded pointer-events-auto cursor-text"
                                         style={{
                                           left: `${screenCoords.x}px`,
                                           top: `${screenCoords.y}px`,
                                           width: `${screenCoords.width}px`,
                                           minHeight: `${screenCoords.height}px`,
                                           fontSize: `${
-                                            textItem.fontSize * scale * 0.75
+                                            textItem.fontSize * scale
                                           }px`,
                                           fontFamily: textItem.fontName,
                                           color: `rgb(${textItem.color.r}, ${textItem.color.g}, ${textItem.color.b})`,
-                                          lineHeight: "1.2",
+                                          lineHeight: "1",
                                           overflow: "hidden",
                                           wordWrap: "break-word",
+                                          padding: "0",
+                                          margin: "0",
                                           transform: textItem.rotation
                                             ? `rotate(${textItem.rotation}deg)`
                                             : undefined,
